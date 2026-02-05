@@ -8,6 +8,10 @@ const TA_CHANNEL_ID = (process.env.TA_CHANNEL_ID || "").trim();
 
 if (!DISCORD_BOT_TOKEN) throw new Error("Missing DISCORD_BOT_TOKEN");
 if (!OPENAI_API_KEY) throw new Error("Missing OPENAI_API_KEY");
+
+console.log("VECTOR_STORE_ID raw:", JSON.stringify(process.env.VECTOR_STORE_ID || ""));
+console.log("VECTOR_STORE_ID length:", (process.env.VECTOR_STORE_ID || "").length);
+
 if (!VECTOR_STORE_ID) throw new Error("Missing VECTOR_STORE_ID");
 if (!TA_CHANNEL_ID) throw new Error("Missing TA_CHANNEL_ID");
 
