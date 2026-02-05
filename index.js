@@ -21,12 +21,6 @@ const client = new Client({
   ],
 });
 
-client.once(Events.ClientReady, (c) => {
-  console.log(`✅ Logged in as ${c.user.tag}`);
-  console.log(`📚 Vector store: ${VECTOR_STORE_ID}`);
-  console.log(`🧑‍🏫 TA channel lock: ${TA_CHANNEL_ID}`);
-});
-
 client.on(Events.MessageCreate, async (message) => {
   // ✅ Debug: confirms the bot is receiving messages at all
   console.log(
