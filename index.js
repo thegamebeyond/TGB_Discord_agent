@@ -1,7 +1,8 @@
 import { Client, GatewayIntentBits, Events } from "discord.js";
 import OpenAI from "openai";
 
-const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const DISCORD_BOT_TOKEN = (process.env.DISCORD_BOT_TOKEN || "").trim();
+
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 if (!DISCORD_BOT_TOKEN) throw new Error("Missing DISCORD_BOT_TOKEN");
