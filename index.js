@@ -31,6 +31,9 @@ client.once(Events.ClientReady, (c) => {
   console.log(`🧑‍🏫 TA channel lock: ${TA_CHANNEL_ID}`);
 });
 
+console.log("MSG:", message.channelId, message.author.username, message.content?.slice(0, 50));
+
+
 client.on(Events.MessageCreate, async (message) => {
   try {
     // Ignore bots (including itself)
