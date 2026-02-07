@@ -128,7 +128,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         },
         { role: "user", content: question },
       ],
-      tools: [{ type: "file_search", vector_store_ids: [VECTOR_STORE_ID] }],
+      tools: [{ type: "file_search", vector_store_ids: [VS_GAME_DESIGN_BASICS] }],
     });
 
     const answer = response.output_text?.trim() || "I couldn’t generate an answer.";
