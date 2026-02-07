@@ -8,6 +8,10 @@ import {
   SlashCommandBuilder,
   ActionRowBuilder,
   StringSelectMenuBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  InteractionResponseFlags,
 } from "discord.js";
 import OpenAI from "openai";
 
@@ -26,11 +30,12 @@ if (!DISCORD_BOT_TOKEN) throw new Error("Missing DISCORD_BOT_TOKEN");
 if (!OPENAI_API_KEY) throw new Error("Missing OPENAI_API_KEY");
 if (!TA_CHANNEL_ID) throw new Error("Missing TA_CHANNEL_ID");
 if (!GUILD_ID) throw new Error("Missing GUILD_ID");
+
 if (!VS_MASTERCLASS_GAME_DESIGN) throw new Error("Missing VS_MASTERCLASS_GAME_DESIGN");
 if (!VS_GAME_DESIGN_BASICS) throw new Error("Missing VS_GAME_DESIGN_BASICS");
 if (!VS_BONUS) throw new Error("Missing VS_BONUS");
 
-// ===== Course Dropdown Options =====
+// ===== Courses =====
 const COURSE_OPTIONS = [
   {
     label: "Masterclass Game Design",
@@ -52,45 +57,40 @@ const COURSE_OPTIONS = [
   },
 ];
 
-// Safety check
-for (const c of COURSE_OPTIONS) {
-  if (!c.vectorStoreId) throw new Error(`Missing vector store ID for course: ${c.label}`);
-}
-
-// Store per-user course selection in memory
+// ===== In-memory user selection =====
 const userCourseSelection = new Map(); // userId -> course object
 
 // ===== Clients =====
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds], // slash commands only need Guilds
+  intents: [GatewayIntentBits.Guilds], // interactions only
 });
 
-// ===== Slash Command Definition =====
+// ===== Slash command: /ask =====
 const askCommand = new SlashCommandBuilder()
   .setName("ask")
-  .setDescription("Ask the Game Beyond TA a question.")
-  .addStringOption((opt) =>
-    opt
-      .setName("question")
-      .setDescription("Your question (optional — pick a course first)")
-      .setRequired(false)
-  );
+  .setDescription("Ask the Game Beyond TA (choose a course, then ask a question).");
 
 async function registerGuildCommands() {
   const rest = new REST({ version: "10" }).setToken(DISCORD_BOT_TOKEN);
 
+  // Clear existing commands (forces Discord UI to refresh)
+  await rest.put(Routes.applicationGuildCommands(client.user.id, GUILD_ID), {
+    body: [],
+  });
+
+  // Register command(s)
   await rest.put(Routes.applicationGuildCommands(client.user.id, GUILD_ID), {
     body: [askCommand.toJSON()],
   });
 
-  console.log("✅ Registered /ask command for guild:", GUILD_ID);
+  console.log("✅ Re-registered /ask command for guild:", GUILD_ID);
 }
 
 // ===== Helpers =====
-async function showCourseDropdown(interaction) {
-  const select = new StringSelectMenuBuilder()
+function buildCourseDropdown() {
+  return new StringSelectMenuBuilder()
     .setCustomId("course_select")
     .setPlaceholder("Choose a course…")
     .addOptions(
@@ -99,14 +99,21 @@ async function showCourseDropdown(interaction) {
         value: c.value,
       }))
     );
+}
 
-  const row = new ActionRowBuilder().addComponents(select);
+function buildQuestionModal(courseLabel) {
+  const modal = new ModalBuilder()
+    .setCustomId("ask_modal")
+    .setTitle(`Ask: ${courseLabel}`);
 
-  await interaction.reply({
-    content: "Pick which course to search:",
-    components: [row],
-    ephemeral: true,
-  });
+  const input = new TextInputBuilder()
+    .setCustomId("question")
+    .setLabel("Your question")
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(true);
+
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+  return modal;
 }
 
 // ===== Startup =====
@@ -126,63 +133,115 @@ client.once(Events.ClientReady, async (c) => {
   }
 });
 
-// ===== Interaction Handling =====
+// ===== Interactions =====
 client.on(Events.InteractionCreate, async (interaction) => {
-  // ---- Dropdown selection ----
-  if (interaction.isStringSelectMenu()) {
+  // 1) /ask => show course dropdown
+  if (interaction.isChatInputCommand() && interaction.commandName === "ask") {
     try {
-      if (interaction.customId !== "course_select") return;
-
-      const selectedValue = interaction.values?.[0];
-      const course = COURSE_OPTIONS.find((c) => c.value === selectedValue);
-
-      if (!course) {
-        await interaction.reply({ content: "Course not found.", ephemeral: true });
+      // Only allow in the TA channel
+      if (interaction.channelId !== TA_CHANNEL_ID) {
+        await interaction.reply({
+          content: "Please use /ask in the designated TA channel (teacher_assistant).",
+          flags: InteractionResponseFlags.Ephemeral,
+        });
         return;
       }
 
-      userCourseSelection.set(interaction.user.id, course);
+      const select = buildCourseDropdown();
+      const row = new ActionRowBuilder().addComponents(select);
 
       await interaction.reply({
-        content: `✅ Course set to **${course.label}**.\nNow run \`/ask\` again and include your question.`,
-        ephemeral: true,
+        content: "Pick which course to search:",
+        components: [row],
+        flags: InteractionResponseFlags.Ephemeral,
       });
     } catch (err) {
-      console.error("❌ course_select error:", err);
+      console.error("❌ /ask dropdown error:", err);
       try {
-        await interaction.reply({ content: "Something went wrong.", ephemeral: true });
+        await interaction.reply({
+          content: "Something went wrong starting /ask. Try again.",
+          flags: InteractionResponseFlags.Ephemeral,
+        });
       } catch {}
     }
     return;
   }
 
-  // ---- Slash command /ask ----
-  if (interaction.isChatInputCommand()) {
+  // 2) dropdown selection => store course and show modal for question
+  if (interaction.isStringSelectMenu() && interaction.customId === "course_select") {
     try {
-      if (interaction.commandName !== "ask") return;
-
       // Only allow in the TA channel
       if (interaction.channelId !== TA_CHANNEL_ID) {
         await interaction.reply({
-          content: "Please use /ask in the designated TA channel teacher_assistant.",
-          ephemeral: true,
+          content: "Please use /ask in the designated TA channel (teacher_assistant).",
+          flags: InteractionResponseFlags.Ephemeral,
         });
         return;
       }
 
-      const questionRaw = interaction.options.getString("question");
-      const question = (questionRaw || "").trim();
+      const selectedValue = interaction.values?.[0];
+      const course = COURSE_OPTIONS.find((c) => c.value === selectedValue);
 
-      const selectedCourse = userCourseSelection.get(interaction.user.id);
-
-      // If no course selected yet OR no question provided, show dropdown
-      if (!selectedCourse || !question) {
-        await showCourseDropdown(interaction);
+      if (!course) {
+        await interaction.reply({
+          content: "Course not found. Please try /ask again.",
+          flags: InteractionResponseFlags.Ephemeral,
+        });
         return;
       }
 
-      // Respond quickly (Discord expects response within ~3 seconds)
-      await interaction.deferReply();
+      userCourseSelection.set(interaction.user.id, course);
+
+      // Open modal
+      const modal = buildQuestionModal(course.label);
+      await interaction.showModal(modal);
+    } catch (err) {
+      console.error("❌ course_select error:", err);
+      try {
+        await interaction.reply({
+          content: "Something went wrong selecting the course. Try /ask again.",
+          flags: InteractionResponseFlags.Ephemeral,
+        });
+      } catch {}
+    }
+    return;
+  }
+
+  // 3) modal submit => answer using selected vector store
+  if (interaction.isModalSubmit() && interaction.customId === "ask_modal") {
+    try {
+      // Only allow in the TA channel
+      if (interaction.channelId !== TA_CHANNEL_ID) {
+        await interaction.reply({
+          content: "Please use /ask in the designated TA channel (teacher_assistant).",
+          flags: InteractionResponseFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const course = userCourseSelection.get(interaction.user.id);
+      if (!course?.vectorStoreId) {
+        await interaction.reply({
+          content: "I lost your course selection. Please run /ask again.",
+          flags: InteractionResponseFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const question = (interaction.fields.getTextInputValue("question") || "").trim();
+      if (!question) {
+        await interaction.reply({
+          content: "Please enter a question. Try /ask again.",
+          flags: InteractionResponseFlags.Ephemeral,
+        });
+        return;
+      }
+
+      // Acknowledge quickly
+      await interaction.reply({
+        content: `Searching **${course.label}**…`,
+        flags: InteractionResponseFlags.Ephemeral,
+      });
 
       const response = await openai.responses.create({
         model: "gpt-4.1-mini",
@@ -190,7 +249,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           {
             role: "system",
             content:
-              `${selectedCourse.systemHint} ` +
+              `${course.systemHint} ` +
               "Answer ONLY using the provided curriculum files for this course. " +
               "If the answer is not found in the curriculum, say you don't have that covered yet. " +
               "Keep answers concise and practical.",
@@ -200,7 +259,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         tools: [
           {
             type: "file_search",
-            vector_store_ids: [selectedCourse.vectorStoreId],
+            vector_store_ids: [course.vectorStoreId],
           },
         ],
       });
@@ -210,18 +269,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       await interaction.editReply(safeAnswer);
     } catch (err) {
-      console.error("❌ /ask error:", err);
+      console.error("❌ ask_modal error:", err);
       try {
         if (interaction.deferred || interaction.replied) {
           await interaction.editReply("Something went wrong while answering. Try again.");
         } else {
           await interaction.reply({
             content: "Something went wrong while answering. Try again.",
-            ephemeral: true,
+            flags: InteractionResponseFlags.Ephemeral,
           });
         }
       } catch {}
     }
+    return;
   }
 });
 
