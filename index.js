@@ -11,7 +11,6 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  InteractionResponseFlags,
 } from "discord.js";
 import OpenAI from "openai";
 
@@ -57,7 +56,7 @@ const COURSE_OPTIONS = [
   },
 ];
 
-// ===== In-memory user selection =====
+// Store per-user course selection in memory
 const userCourseSelection = new Map(); // userId -> course object
 
 // ===== Clients =====
@@ -67,7 +66,7 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds], // interactions only
 });
 
-// ===== Slash command: /ask =====
+// ===== Slash command: /ask (no args) =====
 const askCommand = new SlashCommandBuilder()
   .setName("ask")
   .setDescription("Ask the Game Beyond TA (choose a course, then ask a question).");
@@ -75,10 +74,8 @@ const askCommand = new SlashCommandBuilder()
 async function registerGuildCommands() {
   const rest = new REST({ version: "10" }).setToken(DISCORD_BOT_TOKEN);
 
-  // Clear existing commands (forces Discord UI to refresh)
-  await rest.put(Routes.applicationGuildCommands(client.user.id, GUILD_ID), {
-    body: [],
-  });
+  // Clear existing commands to force UI refresh
+  await rest.put(Routes.applicationGuildCommands(client.user.id, GUILD_ID), { body: [] });
 
   // Register command(s)
   await rest.put(Routes.applicationGuildCommands(client.user.id, GUILD_ID), {
@@ -138,11 +135,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
   // 1) /ask => show course dropdown
   if (interaction.isChatInputCommand() && interaction.commandName === "ask") {
     try {
-      // Only allow in the TA channel
       if (interaction.channelId !== TA_CHANNEL_ID) {
         await interaction.reply({
           content: "Please use /ask in the designated TA channel (teacher_assistant).",
-          flags: InteractionResponseFlags.Ephemeral,
+          ephemeral: true,
         });
         return;
       }
@@ -153,14 +149,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.reply({
         content: "Pick which course to search:",
         components: [row],
-        flags: InteractionResponseFlags.Ephemeral,
+        ephemeral: true,
       });
     } catch (err) {
       console.error("❌ /ask dropdown error:", err);
       try {
         await interaction.reply({
           content: "Something went wrong starting /ask. Try again.",
-          flags: InteractionResponseFlags.Ephemeral,
+          ephemeral: true,
         });
       } catch {}
     }
@@ -170,11 +166,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
   // 2) dropdown selection => store course and show modal for question
   if (interaction.isStringSelectMenu() && interaction.customId === "course_select") {
     try {
-      // Only allow in the TA channel
       if (interaction.channelId !== TA_CHANNEL_ID) {
         await interaction.reply({
           content: "Please use /ask in the designated TA channel (teacher_assistant).",
-          flags: InteractionResponseFlags.Ephemeral,
+          ephemeral: true,
         });
         return;
       }
@@ -184,15 +179,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (!course) {
         await interaction.reply({
-          content: "Course not found. Please try /ask again.",
-          flags: InteractionResponseFlags.Ephemeral,
+          content: "Course not found. Please run /ask again.",
+          ephemeral: true,
         });
         return;
       }
 
       userCourseSelection.set(interaction.user.id, course);
 
-      // Open modal
       const modal = buildQuestionModal(course.label);
       await interaction.showModal(modal);
     } catch (err) {
@@ -200,7 +194,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       try {
         await interaction.reply({
           content: "Something went wrong selecting the course. Try /ask again.",
-          flags: InteractionResponseFlags.Ephemeral,
+          ephemeral: true,
         });
       } catch {}
     }
@@ -210,11 +204,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
   // 3) modal submit => answer using selected vector store
   if (interaction.isModalSubmit() && interaction.customId === "ask_modal") {
     try {
-      // Only allow in the TA channel
       if (interaction.channelId !== TA_CHANNEL_ID) {
         await interaction.reply({
           content: "Please use /ask in the designated TA channel (teacher_assistant).",
-          flags: InteractionResponseFlags.Ephemeral,
+          ephemeral: true,
         });
         return;
       }
@@ -223,7 +216,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (!course?.vectorStoreId) {
         await interaction.reply({
           content: "I lost your course selection. Please run /ask again.",
-          flags: InteractionResponseFlags.Ephemeral,
+          ephemeral: true,
         });
         return;
       }
@@ -232,15 +225,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (!question) {
         await interaction.reply({
           content: "Please enter a question. Try /ask again.",
-          flags: InteractionResponseFlags.Ephemeral,
+          ephemeral: true,
         });
         return;
       }
 
-      // Acknowledge quickly
+      // Respond quickly (ephemeral)
       await interaction.reply({
         content: `Searching **${course.label}**…`,
-        flags: InteractionResponseFlags.Ephemeral,
+        ephemeral: true,
       });
 
       const response = await openai.responses.create({
@@ -276,7 +269,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         } else {
           await interaction.reply({
             content: "Something went wrong while answering. Try again.",
-            flags: InteractionResponseFlags.Ephemeral,
+            ephemeral: true,
           });
         }
       } catch {}
