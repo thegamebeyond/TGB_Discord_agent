@@ -80,9 +80,12 @@ async function registerGuildCommands() {
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`✅ Logged in as ${c.user.tag}`);
-  console.log(`📚 Vector store: ${VECTOR_STORE_ID}`);
   console.log(`🧑‍🏫 TA channel lock: ${TA_CHANNEL_ID}`);
   console.log(`🏫 Guild: ${GUILD_ID}`);
+  console.log("📚 Vector stores:");
+for (const c of COURSE_OPTIONS) {
+  console.log(`   - ${c.label}: ${c.vectorStoreId}`);
+}
 
   // Register slash command on startup (guild-only = instant)
   try {
