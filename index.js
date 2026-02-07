@@ -5,7 +5,10 @@ import {
   REST,
   Routes,
   SlashCommandBuilder,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
 } from "discord.js";
+
 import OpenAI from "openai";
 
 const DISCORD_BOT_TOKEN = (process.env.DISCORD_BOT_TOKEN || "").trim();
@@ -64,7 +67,7 @@ const askCommand = new SlashCommandBuilder()
   .addStringOption((opt) =>
     opt
       .setName("question")
-      .setDescription("Your question")
+      .setDescription("Your question (optional for now — pick a course first)")
       .setRequired(true)
   );
 
