@@ -10,15 +10,46 @@ import OpenAI from "openai";
 
 const DISCORD_BOT_TOKEN = (process.env.DISCORD_BOT_TOKEN || "").trim();
 const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || "").trim();
-const VECTOR_STORE_ID = (process.env.VECTOR_STORE_ID || "").trim();
 const TA_CHANNEL_ID = (process.env.TA_CHANNEL_ID || "").trim();
 const GUILD_ID = (process.env.GUILD_ID || "").trim();
+const VS_MASTERCLASS_GAME_DESIGN = (process.env.VS_MASTERCLASS_GAME_DESIGN || "").trim();
+const VS_GAME_DESIGN_BASICS = (process.env.VS_GAME_DESIGN_BASICS || "").trim();
+const VS_BONUS = (process.env.VS_BONUS || "").trim();
+
 
 if (!DISCORD_BOT_TOKEN) throw new Error("Missing DISCORD_BOT_TOKEN");
 if (!OPENAI_API_KEY) throw new Error("Missing OPENAI_API_KEY");
-if (!VECTOR_STORE_ID) throw new Error("Missing VECTOR_STORE_ID");
 if (!TA_CHANNEL_ID) throw new Error("Missing TA_CHANNEL_ID");
 if (!GUILD_ID) throw new Error("Missing GUILD_ID");
+if (!VS_MASTERCLASS_GAME_DESIGN) throw new Error("Missing VS_MASTERCLASS_GAME_DESIGN");
+if (!VS_GAME_DESIGN_BASICS) throw new Error("Missing VS_GAME_DESIGN_BASICS");
+if (!VS_BONUS) throw new Error("Missing VS_BONUS");
+
+const COURSE_OPTIONS = [
+  {
+    label: "Masterclass Game Design",
+    value: "masterclass",
+    vectorStoreId: VS_MASTERCLASS_GAME_DESIGN,
+    systemHint: "You are the Game Beyond TA for the Masterclass Game Design course.",
+  },
+  {
+    label: "Game Design Basics",
+    value: "basics",
+    vectorStoreId: VS_GAME_DESIGN_BASICS,
+    systemHint: "You are the Game Beyond TA for the Game Design Basics course.",
+  },
+  {
+    label: "Bonus",
+    value: "bonus",
+    vectorStoreId: VS_BONUS,
+    systemHint: "You are the Game Beyond TA for the Bonus course materials.",
+  },
+];
+
+// Safety check
+for (const c of COURSE_OPTIONS) {
+  if (!c.vectorStoreId) throw new Error(`Missing vector store ID for course: ${c.label}`);
+}
 
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
@@ -70,7 +101,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // Only allow in the TA channel
     if (interaction.channelId !== TA_CHANNEL_ID) {
       await interaction.reply({
-        content: "Please use /ask in the designated TA channel.",
+        content: "Please use /ask in the designated TA channel teacher_assistant.",
         ephemeral: true,
       });
       return;
